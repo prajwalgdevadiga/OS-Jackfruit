@@ -165,13 +165,20 @@ static int container_func(void *arg) {
     if (mount("proc","/proc","proc",0,NULL)!=0) perror("mount proc");
     if (dup2(a->pipe_fd,STDOUT_FILENO)<0||dup2(a->pipe_fd,STDERR_FILENO)<0) { perror("dup2"); return 1; }
     close(a->pipe_fd);
+    /* force unbuffered so every write reaches the pipe immediately */
+    setvbuf(stdout,NULL,_IONBF,0);
+    setvbuf(stderr,NULL,_IONBF,0);
     if (a->nice_val!=0) setpriority(PRIO_PROCESS,0,a->nice_val);
     if (a->command[0]!='\0') {
         char *argv_sh[]={"/bin/sh","-c",a->command,NULL};
         execvp("/bin/sh",argv_sh); perror("execvp"); return 1;
     }
-    char *argv_def[]={"/bin/sh","-c","while true; do echo running; sleep 2; done",NULL};
-    execvp("/bin/sh",argv_def); perror("execvp default"); return 1;
+    /* default heartbeat: pure C loop, dprintf writes directly to fd — no buffering */
+    while (1) {
+        dprintf(STDOUT_FILENO,"[container pid=%d] running\n",getpid());
+        sleep(2);
+    }
+    return 0;
 }
 
 static container_t *find_container(const char *id) {
